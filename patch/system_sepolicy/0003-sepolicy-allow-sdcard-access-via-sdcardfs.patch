@@ -1,0 +1,51 @@
+From 8a218a74c661be4cc38de0e9835f83d4e7e599e0 Mon Sep 17 00:00:00 2001
+From: sub77 <sub77@ymail.com>
+Date: Sat, 26 Nov 2016 13:15:24 +0000
+Subject: [PATCH 3/5] sepolicy: allow sdcard access via sdcardfs
+
+---
+ app.te           | 8 +++++++-
+ untrusted_app.te | 3 +++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/app.te b/app.te
+index 4462062..1c675a4 100644
+--- a/app.te
++++ b/app.te
+@@ -184,11 +184,17 @@ allow appdomain storage_file:lnk_file r_file_perms;
+ allow appdomain mnt_user_file:dir r_dir_perms;
+ allow appdomain mnt_user_file:lnk_file r_file_perms;
+ 
+-# Read/write visible storage
++# Read/write visible storage (vfat/f2fs/ext4/exfat) via fuse/sdcardfs
+ allow appdomain fuse:dir create_dir_perms;
+ allow appdomain fuse:file create_file_perms;
+ allow appdomain sdcardfs:dir create_dir_perms;
+ allow appdomain sdcardfs:file create_file_perms;
++allow appdomain vfat:dir create_dir_perms;
++allow appdomain vfat:file create_file_perms;
++allow appdomain sdcard_posix:dir create_dir_perms;
++allow appdomain sdcard_posix:file create_file_perms;
++allow appdomain fuseblk:dir create_dir_perms;
++allow appdomain fuseblk:file create_file_perms;
+ 
+ # Access OBBs (vfat images) mounted by vold (b/17633509)
+ # File write access allowed for FDs returned through Storage Access Framework
+diff --git a/untrusted_app.te b/untrusted_app.te
+index 6bc6843..b1c90d6 100644
+--- a/untrusted_app.te
++++ b/untrusted_app.te
+@@ -181,7 +181,10 @@ neverallow untrusted_app property_type:property_service set;
+ neverallow untrusted_app {
+   fs_type
+   -fuse                     # sdcard
++  -fuseblk                  # sdcard
+   -sdcardfs                 # sdcard
++  -sdcard_posix             # sdcard
++  -vfat                     # sdcard
+   file_type
+   -app_data_file            # The apps sandbox itself
+   -media_rw_data_file       # Internal storage. Known that apps can
+-- 
+2.1.4
+

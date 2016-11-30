@@ -1,0 +1,27 @@
+From 0286906ca8239f3f7974ae1664ac96a0afc8c146 Mon Sep 17 00:00:00 2001
+From: Dan Elkouby <streetwalrus@codewalr.us>
+Date: Sat, 26 Nov 2016 20:21:29 +0200
+Subject: [PATCH 4/5] [3/3] Autostartable sshd
+
+Allow sshd to transition to the shell domain
+
+Change-Id: I93d8bbb3aa0eab11793e0978e66aefec7d05260f
+---
+ domain.te | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/domain.te b/domain.te
+index 9c6f32b..1dc7cd8 100644
+--- a/domain.te
++++ b/domain.te
+@@ -500,6 +500,7 @@ neverallow {
+   -adbd
+   -init
+   -runas
++  -sshd
+   -zygote
+   userdebug_or_eng(`-qti-testscripts')
+ } shell:process { transition dyntransition };
+-- 
+2.1.4
+

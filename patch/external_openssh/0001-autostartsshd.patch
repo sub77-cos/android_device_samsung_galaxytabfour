@@ -1,0 +1,168 @@
+From 61a3c556a87c6a8e1ec1d26c529b0283009ff1d3 Mon Sep 17 00:00:00 2001
+From: Dan Elkouby <streetwalrus@codewalr.us>
+Date: Sat, 26 Nov 2016 20:18:15 +0200
+Subject: [PATCH] [2/3] Autostartable sshd
+
+- Set everything up from init script
+- Slightly more sane default config
+- User processes inherit system environment
+  This is done by adb shell as well. Init sets a few environment
+  variables such as ANDROID_* that are needed in order to run certain
+  commands
+- Sync extra groups for shell with adbd
+
+Change-Id: I0739ab8293f82cafeb2c696e038aa7247a7c53b4
+---
+
+diff --git a/session.c b/session.c
+index 9a15384..96fb5bb 100644
+--- a/session.c
++++ b/session.c
+@@ -1150,6 +1150,10 @@
+ 	env = xcalloc(envsize, sizeof(char *));
+ 	env[0] = NULL;
+ 
++#ifdef ANDROID
++	copy_environment(environ, &env, &envsize);
++#endif
++
+ #ifdef HAVE_CYGWIN
+ 	/*
+ 	 * The Windows environment contains some setting which are
+diff --git a/sshd_config.android b/sshd_config.android
+index 3f3aa42..2a2cb2c 100644
+--- a/sshd_config.android
++++ b/sshd_config.android
+@@ -36,13 +36,13 @@
+ # Authentication:
+ 
+ #LoginGraceTime 2m
+-#PermitRootLogin yes
++PermitRootLogin no
+ #StrictModes yes
+ #MaxAuthTries 6
+ #MaxSessions 10
+ 
+ #RSAAuthentication yes
+-#PubkeyAuthentication yes
++PubkeyAuthentication yes
+ 
+ # The default is to check both .ssh/authorized_keys and .ssh/authorized_keys2
+ # but this is overridden so installations will only check .ssh/authorized_keys
+@@ -60,10 +60,10 @@
+ 
+ # To disable tunneled clear text passwords, change to no here!
+ PasswordAuthentication no
+-#PermitEmptyPasswords no
++PermitEmptyPasswords no
+ 
+ # Change to no to disable s/key passwords
+-#ChallengeResponseAuthentication yes
++ChallengeResponseAuthentication no
+ 
+ # Kerberos options
+ #KerberosAuthentication no
+@@ -111,7 +111,7 @@
+ #Banner none
+ 
+ # override default of no subsystems
+-Subsystem	sftp	/usr/libexec/sftp-server
++Subsystem	sftp	internal-sftp
+ 
+ # Example of overriding settings on a per-user basis
+ #Match User anoncvs
+diff --git a/start-ssh b/start-ssh
+index 62d87da..7f8db1d 100644
+--- a/start-ssh
++++ b/start-ssh
+@@ -4,22 +4,35 @@
+ 
+ # DEBUG=1
+ 
+-DSA_KEY=/data/ssh/ssh_host_dsa_key
+-DSA_PUB_KEY=/data/ssh/ssh_host_dsa_key.pub
+-RSA_KEY=/data/ssh/ssh_host_rsa_key
+-RSA_PUB_KEY=/data/ssh/ssh_host_rsa_key.pub
+-AUTHORIZED_KEYS=/data/ssh/authorized_keys
++BASEDIR=/data/ssh
++DSA_KEY=$BASEDIR/ssh_host_dsa_key
++DSA_PUB_KEY=$BASEDIR/ssh_host_dsa_key.pub
++RSA_KEY=$BASEDIR/ssh_host_rsa_key
++RSA_PUB_KEY=$BASEDIR/ssh_host_rsa_key.pub
++AUTHORIZED_KEYS=$BASEDIR/authorized_keys
+ DEFAULT_AUTHORIZED_KEYS=/system/etc/security/authorized_keys.default
++CONFIG=$BASEDIR/sshd_config
++DEFAULT_CONFIG=/system/etc/ssh/sshd_config
++
++if [ ! -d $BASEDIR ]; then
++    mkdir $BASEDIR
++    chmod 0750 $BASEDIR
++    chown root:shell $BASEDIR
++
++    mkdir $BASEDIR/empty
++    chmod 0600 $BASEDIR/empty
++    chown root:shell $BASEDIR/empty
++fi
+ 
+ if [ ! -f $DSA_KEY ]; then
+     /system/bin/ssh-keygen -t dsa -f $DSA_KEY -N ""
+-    chmod 600 /$DSA_KEY
++    chmod 600 $DSA_KEY
+     chmod 644 $DSA_PUB_KEY
+ fi
+ 
+ if [ ! -f $RSA_KEY ]; then
+     /system/bin/ssh-keygen -t rsa -f $RSA_KEY -N ""
+-    chmod 600 /$RSA_KEY
++    chmod 600 $RSA_KEY
+     chmod 644 $RSA_PUB_KEY
+ fi
+ 
+@@ -27,11 +40,20 @@
+     cat $DEFAULT_AUTHORIZED_KEYS > $AUTHORIZED_KEYS
+ fi
+ 
++if [[ -f $AUTHORIZED_KEYS ]]; then
++    chmod 644 $AUTHORIZED_KEYS;
++fi
++
++if [[ ! -f $CONFIG && -f $DEFAULT_CONFIG ]]; then
++    cat $DEFAULT_CONFIG > $CONFIG
++    chmod 600 $CONFIG
++fi
++
+ 
+ if [ "1" == "$DEBUG" ] ; then
+     # run sshd in debug mode and capture output to logcat
+-    /system/bin/logwrapper /system/bin/sshd -f /system/etc/ssh/sshd_config -D -d
++    /system/bin/logwrapper /system/bin/sshd -f $CONFIG -D -d
+ else
+     # don't daemonize - otherwise we can't stop the sshd service
+-    /system/bin/sshd -f /system/etc/ssh/sshd_config -D
++    /system/bin/sshd -f $CONFIG -D
+ fi
+diff --git a/uidswap.c b/uidswap.c
+index 1974319..11f14e1 100644
+--- a/uidswap.c
++++ b/uidswap.c
+@@ -233,14 +233,14 @@
+ 		 * - AID_LOG to read system logs (adb logcat)
+ 		 * - AID_INPUT to diagnose input issues (getevent)
+ 		 * - AID_INET to diagnose network issues (netcfg, ping)
+-		 * - AID_GRAPHICS to access the frame buffer
+ 		 * - AID_NET_BT and AID_NET_BT_ADMIN to diagnose bluetooth (hcidump)
++		 * - AID_SDCARD_R to allow reading from the SD card
+ 		 * - AID_SDCARD_RW to allow writing to the SD card
+-		 * - AID_MOUNT to allow unmounting the SD card before rebooting
+-		 * - AID_NET_BW_STATS to read out qtaguid statistics. */
+-		gid_t groups[] = {AID_LOG,       AID_INPUT,  AID_INET,
+-				  AID_GRAPHICS,  AID_NET_BT, AID_NET_BT_ADMIN,
+-				  AID_SDCARD_RW, AID_MOUNT,  AID_NET_BW_STATS};
++		 * - AID_NET_BW_STATS to read out qtaguid statistics.
++		 * - AID_READPROC for reading /proc entries across UID boundaries */
++		gid_t groups[] = {AID_LOG,       AID_INPUT,        AID_INET,
++				  AID_NET_BT,    AID_NET_BT_ADMIN, AID_SDCARD_R,
++				  AID_SDCARD_RW, AID_NET_BW_STATS, AID_READPROC};
+ 		setgroups(sizeof(groups)/sizeof(groups[0]), groups);
+ 	}
+ #endif

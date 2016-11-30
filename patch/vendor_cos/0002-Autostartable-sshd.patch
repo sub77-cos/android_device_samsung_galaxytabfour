@@ -1,0 +1,128 @@
+From 137463f869b83dce6f4925b56671a1e98c36d42f Mon Sep 17 00:00:00 2001
+From: Dan Elkouby <streetwalrus@codewalr.us>
+Date: Sat, 26 Nov 2016 20:19:47 +0200
+Subject: [PATCH 2/3] Autostartable sshd
+
+- Move directory creation to init script
+- Add init service
+- sepolicy to match
+
+Change-Id: I373b6fdea97dbaf2a91949ce70d40133b86d05b4
+
+Conflicts:
+	prebuilt/common/etc/init.local.rc
+	sepolicy/file_contexts
+---
+ prebuilt/common/etc/init.local.rc | 13 ++++++++++-
+ sepolicy/file_contexts            |  7 ++++++
+ sepolicy/sshd.te                  | 45 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 64 insertions(+), 1 deletion(-)
+ create mode 100644 sepolicy/sshd.te
+
+diff --git a/prebuilt/common/etc/init.local.rc b/prebuilt/common/etc/init.local.rc
+index bef7147..a48bb6b 100644
+--- a/prebuilt/common/etc/init.local.rc
++++ b/prebuilt/common/etc/init.local.rc
+@@ -17,11 +17,18 @@ on init
+     chmod 0220 /dev/bfqio/rt-display/cgroup.event_control
+ 
+ on post-fs-data
+-    mkdir /data/.ssh 0750 root shell
++    mkdir /cache/recovery 0770 system cache
+ 
+     # Run sysinit
+     start sysinit
+ 
++    # Change permissions on fsck log so it can be added to the dropbox
++    chown root log /dev/fscklogs/log
++    chmod 0640 /dev/fscklogs/log
++
++on post-fs-data && property:persist.sshd.autostart=1
++    start sshd
++
+ on boot
+     # interactive governor
+     chown system system /sys/devices/system/cpu/cpufreq/interactive/timer_rate
+@@ -133,6 +140,10 @@ service sysinit /system/bin/sysinit
+     oneshot
+     disabled
+ 
++service sshd /system/bin/start-ssh
++    user root
++    disabled
++
+ # bugreport is triggered by holding down volume down, volume up and power
+ service bugreport /system/bin/dumpstate -d -p -B \
+         -o /data/data/com.android.shell/files/bugreports/bugreport
+diff --git a/sepolicy/file_contexts b/sepolicy/file_contexts
+index f72afe2..71c1a63 100644
+--- a/sepolicy/file_contexts
++++ b/sepolicy/file_contexts
+@@ -2,6 +2,13 @@
+ 
+ /system/bin/sysinit       u:object_r:sysinit_exec:s0
+ 
++/system/bin/start-ssh     u:object_r:sshd_init_exec:s0
++/system/bin/sshd          u:object_r:sshd_exec:s0
++/data/ssh(/.*)?           u:object_r:sshd_data:s0
++
++/system/etc/init.d/90userinit           u:object_r:userinit_exec:s0
++/data/local/userinit.sh                 u:object_r:userinit_data_exec:s0
++
+ # For EXFAT/F2FS/NTFS partitions marked "formattable"
+ /system/bin/mkfs\.exfat   u:object_r:mkfs_exec:s0
+ /system/bin/mkfs\.f2fs    u:object_r:mkfs_exec:s0
+diff --git a/sepolicy/sshd.te b/sepolicy/sshd.te
+new file mode 100644
+index 0000000..174334e
+--- /dev/null
++++ b/sepolicy/sshd.te
+@@ -0,0 +1,45 @@
++### Data storage
++type sshd_data, file_type, data_file_type;
++type_transition { sshd sshd_init } system_data_file:{ dir file } sshd_data;
++allow sshd_init sshd_data:dir { rw_dir_perms create_dir_perms };
++allow sshd_init sshd_data:file { rw_file_perms create_file_perms };
++allow sshd sshd_data:dir { rw_dir_perms };
++allow sshd sshd_data:file { rw_file_perms };
++
++
++### Init script domain
++type sshd_init, domain;
++type sshd_init_exec, exec_type, file_type;
++
++init_daemon_domain(sshd_init)
++
++allow sshd_init self:capability { chown dac_override };
++allow sshd_init devpts:chr_file { rw_file_perms };
++allow sshd_init shell_exec:file { rx_file_perms };
++allow sshd_init system_file:file { rx_file_perms };
++allow sshd_init toolbox_exec:file { rx_file_perms };
++
++# Hand off once we finally start the daemon
++domain_auto_trans(sshd_init, sshd_exec, sshd)
++
++
++### Main sshd domain
++type sshd, domain;
++type sshd_exec, exec_type, file_type;
++
++# Shell domain crosstalk, same as adb
++domain_auto_trans(sshd, shell_exec, shell)
++allow shell sshd:fd use;
++# rsync and friends
++allow shell sshd:fifo_file { rw_file_perms };
++
++# Allow network comm
++net_domain(sshd);
++
++allow sshd self:capability { chown dac_override kill net_bind_service net_raw setgid setuid sys_chroot };
++allow sshd devpts:chr_file { rw_file_perms setattr };
++allow sshd sshd_exec:file { rx_file_perms };
++allow sshd sshd_init:fd use;
++
++allow dpmd sshd:fd use;
++allow dpmd sshd:tcp_socket { read write };
+-- 
+2.1.4
+

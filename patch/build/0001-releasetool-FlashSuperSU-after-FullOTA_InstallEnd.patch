@@ -1,0 +1,33 @@
+From f736e6a56877311fffc2462ef22f3dab4fbfa98d Mon Sep 17 00:00:00 2001
+From: sub77 <sub77@ymail.com>
+Date: Wed, 30 Nov 2016 06:44:02 +0000
+Subject: [PATCH] releasetool: FlashSuperSU after FullOTA_InstallEnd
+
+---
+ tools/releasetools/ota_from_target_files.py | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/tools/releasetools/ota_from_target_files.py b/tools/releasetools/ota_from_target_files.py
+index 3dfde80..44f2056 100755
+--- a/tools/releasetools/ota_from_target_files.py
++++ b/tools/releasetools/ota_from_target_files.py
+@@ -779,14 +779,13 @@ else if get_stage("%(bcb_dev)s") == "3/3" then
+   script.WriteRawImage("/boot", "boot.img")
+ 
+   if block_based:
++    script.ShowProgress(0.2, 10)
++    device_specific.FullOTA_InstallEnd()
+     script.Print("Flashing SuperSU...")
+     common.ZipWriteStr(output_zip, "supersu/supersu.zip",
+     ""+input_zip.read("SYSTEM/addon.d/UPDATE-SuperSU.zip"))
+     script.FlashSuperSU()
+ 
+-  script.ShowProgress(0.2, 10)
+-  device_specific.FullOTA_InstallEnd()
+-
+   if OPTIONS.extra_script is not None:
+     script.AppendExtra(OPTIONS.extra_script)
+ 
+-- 
+2.1.4
+
