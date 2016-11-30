@@ -1,0 +1,1 @@
+DEVICE_SRC_FILES    := $(DEVICE_PATH)/wifi/WCNSS_cfg.dat

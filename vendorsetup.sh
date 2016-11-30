@@ -1,0 +1,3 @@
+add_lunch_combo cos_galaxytabfour-userdebug
+add_lunch_combo cos_galaxytabfour-eng
+add_lunch_combo cos_galaxytabfour-user

@@ -1,0 +1,28 @@
+From c6fbff046e5203365b317ae81ae4a733237b31d5 Mon Sep 17 00:00:00 2001
+From: sub77 <sub77@ymail.com>
+Date: Sun, 27 Nov 2016 10:22:44 +0000
+Subject: [PATCH 6/6] Intercept Home button press to wake device
+
+---
+ services/core/java/com/android/server/policy/PhoneWindowManager.java | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index a14a13d..db3c91c 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -5771,8 +5771,10 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+ 
+         // Basic policy based on interactive state.
+         int result;
++        final boolean isHomeWakeKey = !isScreenOn()
++                && (keyCode == KeyEvent.KEYCODE_HOME);
+         boolean isWakeKey = (policyFlags & WindowManagerPolicy.FLAG_WAKE) != 0
+-                || event.isWakeKey();
++                || event.isWakeKey() || isHomeWakeKey;
+         if (interactive || (isInjected && !isWakeKey)) {
+             // When the device is interactive or the key is injected pass the
+             // key to the application.
+-- 
+2.1.4
+
